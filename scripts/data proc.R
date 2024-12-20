@@ -84,7 +84,7 @@ for (year in years) {
       data$MEDDEP <- ifelse(data$RXDDRGID %in% codes, 1, 0)
       
       # select only SEQN and MEDDEP 
-      data <- data %>% select(SEQN, MEDDEP)
+      data <- data %>% dplyr::select(SEQN, MEDDEP)
       
       #collapse over unqiue SEQN 
       data <- data %>%
@@ -142,7 +142,7 @@ for (var in vars) {
     data$MEDDEP <- ifelse(data$RXDDRGID %in% codes, 1, 0)
     
     # select only SEQN and MEDDEP 
-    data <- data %>% select(SEQN, MEDDEP)
+    data <- data %>% dplyr::select(SEQN, MEDDEP)
     
     #collapse over unqiue SEQN 
     data <- data %>%
@@ -246,6 +246,12 @@ cat("Total cells changed to NA:\n",
 
 ###### variable transformation
 
+## Create BMI bins 
+wd_na$BMI_LVL <- cut(wd_na$BMXBMI,
+                      breaks = c(-Inf, 18.4, 24.9, 29.9, 34.9, 39.9, Inf),
+                      labels = 1:6,
+                      right = TRUE)
+
 wd_na <- wd_na %>% mutate(DEPR_TOT = DPQ010 + DPQ020 + DPQ030 + DPQ040 + DPQ050 + DPQ060 + DPQ070 + DPQ080 + DPQ090)
 
 ### Create PHQ-9 bins
@@ -275,7 +281,7 @@ wd_na$MEC15YR <- ifelse(wd_na$SDDSRVYR == 66, wd_na$WTMECPRP * 3.2/15.2, wd_na$W
 wd_na$DMDBORN2[wd_na$DMDBORN2 %in% c(4, 5)] <- 2
 wd_na$DMDBORN[wd_na$DMDBORN %in% 3] <- 2
 wd_na$DMDBORNT <- coalesce(wd_na$DMDBORN, wd_na$DMDBORN2, wd_na$DMDBORN4)
-wd_na <- wd_na %>% select(-DMDBORN, -DMDBORN2, -DMDBORN4)
+wd_na <- wd_na %>% dplyr::select(-DMDBORN, -DMDBORN2, -DMDBORN4)
 
 # Combine moderate and vigorous PA into one variable
 wd_na$PAQMV <- ifelse(wd_na$PAQ650 == 1 | wd_na$PAQ665 == 1, 1, 0)
@@ -339,7 +345,7 @@ wd_na$TOT_REG <- rowSums(wd_na[,c("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "C
 
 ## create working dataset = wd
 # remove unneeded variables 
-wd <- wd_na %>% select(-WTMECPRP, -WTMEC2YR, -PAQ650, -PAQ665, -BPQ040A, 
+wd <- wd_na %>% dplyr::select(-WTMECPRP, -WTMEC2YR, -PAQ650, -PAQ665, -BPQ040A, 
                         -MCQ160C, -MCQ180C, -MCQ160D, -MCQ180D, -MCQ160E, -MCQ180E,
                         -DPQ010, -DPQ020, -DPQ030, -DPQ040, -DPQ040, -DPQ050, -DPQ060,
                         -DPQ070, -DPQ080, -DPQ090, -DID040, -DID060, -SMD030

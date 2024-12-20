@@ -3,8 +3,8 @@ library(mice)
 library(howManyImputations)
 
 responses <- c("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", "CDQ009F", "CDQ009G", "CDQ009H")
-predictors <- c("DEPR_LVL", "AGE_BIN", "RIAGENDR", "RIDRETH1", 
-                "SMQ040", "HIQ011", "BPQ020", "BMXBMI", "BPQ080",
+predictors <- c("DEPR_BIN", "DEPR_LVL", "AGE_BIN", "RIAGENDR", "RIDRETH1", "SMQ020",
+                "SMQ040", "HIQ011", "BPQ020", "BMXBMI", "BMI_LVL", "BPQ080",
                 "ALQ130", "MEDDEP", "DMDBORNT", "PAQMV", "CADTOT", "DIDTOT",
                 "DUQTOT", "INC_BIN")
 
@@ -21,7 +21,7 @@ predictorMatrix[, !colnames(predictorMatrix) %in% predictors] <- 0
 predictorMatrix[!rownames(predictorMatrix) %in% predictors, ] <- 0
 
 # Run mice with the custom predictor matrix
-imputations <- mice(wd_subset, seed = 123, maxit = 5, m = 5, predictorMatrix = predictorMatrix,
+imputations <- mice(wd_subset, seed = 123, maxit = 1, m = 1, predictorMatrix = predictorMatrix,
                     printFlag = TRUE)
 
 
