@@ -170,7 +170,7 @@ str(final_data)
 # List of variables to include in the new dataframe
 selected_vars <- c(
   "RIAGENDR", "RIDAGEYR", "RIDRETH1", "DMDBORN", "DMDBORN2",
-  "DMDBORN4", 
+  "DMDBORN4", "DMDEDUC2", "DMDMARTL",
   "WTMECPRP", "WTMEC2YR", "SDMVPSU", "INDFMPIR", "DIQ010", "DID040", 
   "DIQ050", "DID060", "DIQ070", "PAQ650", "PAQ665", "SMQ020", "SMD030", "SMQ040", "SMD650", 
   "IND235", "INDFMMPC", "HIQ011", "BPQ020", "BPQ040A", "BMXBMI", 
@@ -179,8 +179,9 @@ selected_vars <- c(
   "DPQ080", "DPQ090", "CDQ001", "CDQ002", "CDQ003", "CDQ004", "CDQ005", 
   "CDQ006", "CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", 
   "CDQ009F", "CDQ009G", "CDQ009H", "CDQ008", "CDQ010", "SEQN", "SDDSRVYR",
-  "ALQ130", "DUQ200", "DUQ250", "DUQ290", "DUQ330", "DUQ370", "MEDDEP", "SDMVSTRA"
-)
+  "ALQ130", "DUQ200", "DUQ250", "DUQ290", "DUQ330", "DUQ370", "MEDDEP", "SDMVSTRA",
+  "PAD200", "PAD320"
+  )
 
 # Create a new dataframe with only the selected variables
 df_lim <- final_data[, selected_vars, drop = FALSE]
@@ -205,9 +206,9 @@ miss1 <- c("DIQ010", "DPQ010", "DPQ020", "DPQ030", "DPQ040", "DPQ050",
            "SMQ020", "HIQ011", "BPQ080", "DUQ200", "DUQ250",
            "DUQ370", "DMDBORN2","DMDBORN", "SMQ040", "BPQ020",
            "CDQ001", "CDQ002", "CDQ003",  "CDQ004",  "CDQ005",  "CDQ006",
-           "DUQ290" , "DUQ330")
+           "DUQ290" , "DUQ330", "DMDEDUC2", "PAD200", "PAD320")
 miss2 <- c("CDQ001", "CDQ002", "CDQ003",  "CDQ004",  "CDQ005",  "CDQ006",  "CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E",
-           "CDQ009F", "CDQ009G", "CDQ009H", "CDQ008", "CDQ010", "DMDBORN4")
+           "CDQ009F", "CDQ009G", "CDQ009H", "CDQ008", "CDQ010", "DMDBORN4", "DMDMARTL")
 
 # Filter out rows where any of the DPQ variables are 7 or 9 using package 'dplyr' (refused/don't know)
 # Create a function to count changes to NA
@@ -269,8 +270,13 @@ wd_na$DEPR_BIN <- cut(wd_na$DEPR_TOT,
 #Turn NA in chest pain location into 0 and presence of pain in location to 1
 wd_na <- wd_na %>%
   mutate(across(c("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", 
-                  "CDQ009F", "CDQ009G", "CDQ009H", "CDQ008", "CDQ010"), 
+                  "CDQ009F", "CDQ009G", "CDQ009H"), 
                 ~ ifelse(is.na(.) | . == 0, 0, 1)))
+
+#Turn NA in chest pain location into 0 and presence of pain in location to 1
+wd_na <- wd_na %>%
+  mutate(across(c("CDQ008", "CDQ010"), 
+                ~ ifelse(is.na(.) | . == 2, 0, 1)))
 
 
 ## Creating weighting variable for dataset (need to account for pre-pandemic dataset)
@@ -284,7 +290,17 @@ wd_na$DMDBORNT <- coalesce(wd_na$DMDBORN, wd_na$DMDBORN2, wd_na$DMDBORN4)
 wd_na <- wd_na %>% dplyr::select(-DMDBORN, -DMDBORN2, -DMDBORN4)
 
 # Combine moderate and vigorous PA into one variable
-wd_na$PAQMV <- ifelse(wd_na$PAQ650 == 1 | wd_na$PAQ665 == 1, 1, 0)
+wd_na$PAQMV <- ifelse(
+  rowSums(sapply(c("PAQ650", "PAQ665", "PAD200", "PAD320"), function(x) wd_na[[x]] == 1), na.rm = TRUE) > 0,
+  1,
+  ifelse(
+    rowSums(sapply(c("PAQ650", "PAQ665", "PAD200", "PAD320"), function(x) !is.na(wd_na[[x]])), na.rm = TRUE) == 0,
+    NA,
+    0
+  )
+)
+
+
 
 # Create ROSE angina variable based on Rose Questionnaire criteria 
 wd_na <- wd_na %>%
@@ -337,6 +353,12 @@ wd_na$INC_BIN <- cut(wd_na$INDFMPIR,
                      labels = 1:6,
                      right = TRUE)
 
+wd_na$INC3 <- cut(wd_na$INDFMPIR,
+                  breaks = c(-Inf, 0.99, 1.99, Inf),
+                  labels = 1:3,
+                  right = TRUE)
+
+
 
 # Create a variable to track total regions where pain is experienced
 wd_na$TOT_REG <- rowSums(wd_na[,c("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", 
@@ -349,7 +371,8 @@ wd <- wd_na %>% dplyr::select(-WTMECPRP, -WTMEC2YR, -PAQ650, -PAQ665, -BPQ040A,
                         -MCQ160C, -MCQ180C, -MCQ160D, -MCQ180D, -MCQ160E, -MCQ180E,
                         -DPQ010, -DPQ020, -DPQ030, -DPQ040, -DPQ040, -DPQ050, -DPQ060,
                         -DPQ070, -DPQ080, -DPQ090, -DID040, -DID060, -SMD030
-                        , -SMD650, -IND235, -DID040, -DID060, -DIQ050, -DIQ070, -SMD030)
+                        , -SMD650, -IND235, -DID040, -DID060, -DIQ050, -DIQ070, -SMD030
+                        )
 
 
 ## setting correct class for each variable
@@ -381,12 +404,12 @@ factor_vars <- c("RIAGENDR", "RIDRETH1",
                  "CDQ003", "CDQ004", "CDQ005",
                  "CDQ006", "CDQ009A", "CDQ009B",
                  "CDQ009C", "CDQ009D", "CDQ009E",
-                 "CDQ009F", "CDQ009G", "CDQ009H",
+                 "CDQ009F", "CDQ009G", "CDQ009H", "DMDEDUC2", "DMDMARTL",
                  "CDQ008", "CDQ010", "SEQN", "SDDSRVYR",
                  "DUQ200", "DUQ250", "DUQ290", "DUQ330",
                  "DUQ370", "DUQTOT", "MEDDEP", "DEPR_LVL", "DMDBORNT",
                  "PAQMV", "CAD", "DIDTOT", "AGE_BIN", "CADTOT",
-                  "INC_BIN","SDMVPSU", "SDMVSTRA")  # Variables to convert to factors
+                  "INC_BIN","SDMVPSU", "SDMVSTRA", "ALQ130")  # Variables to convert to factors
 numeric_vars <- c("RIDAGEYR", "INDFMPIR",
                   "BMXBMI", "ALQ130", "DEPR_TOT",
                   "MEC15YR", "TOT_REG")      # Variables to convert to numeric
@@ -410,6 +433,32 @@ subsetd_2 <- subsetd_1[rowSums(subsetd_1[, c("CDQ009A", "CDQ009B", "CDQ009C", "C
                                              "CDQ009E", "CDQ009F", "CDQ009G", "CDQ009H")] != 0, na.rm = TRUE) > 0, ]
 
 
+
+#Subset dataframe for MDA (only selecting for relevant variables)
+subsetd_3 <- subsetd_2 %>% select("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", "CDQ009F", "CDQ009G", "CDQ009H", "TOT_REG", 
+                                 "CDQ008" , "CDQ010", "AGE_BIN", "RIAGENDR", "BMXBMI", "PAQMV", "RIDRETH1", "DMDBORNT" , "DMDEDUC2", "INC3", "HIQ011", 
+                                 "DEPR_LVL", "DEPR_TOT" , "DEPR_BIN", "SDDSRVYR", "MEDDEP", "DIDTOT", "BPQ020", 
+                                 "BPQ080", "SMQ020", "SMQ040", "ALQ130", "DUQTOT")
+
+## Rename variables 
+
+var_names = c("AGE_BIN" = "Age", "RIAGENDR" = "Sex", "PAQMV" = "Physical Activity (Moderate-Vigorous)",
+              "RIDRETH1" = "Race/Ethnicity", "DMDBORNT" = "Country of Birth", "DMDEDUC2" = "Education Level", 
+              "INC3" = "Income (as a proportion of the poverty threshold)", "HIQ011" = "Health Insurance Coverage", "SDDSRVYR" = "NHANES Cycle", 
+              "DEPR_TOT" = "PHQ-9 Score (Total)", "DEPR_BIN" = "PHQ-9 Score (Binary)", "MEDDEP" = "Antidepressant-Use",
+              "DIDTOT" = "Diabetes", "BPQ020" = "Hypertension", "BPQ080" = "Hypercholesterolemia", "SMQ020" = "Smoked at least 100 Cigarettes", 
+              "SMQ040" = "Currently Smoking", "ALQ130" = "Avg. # of alcholic drinks per day over last year", "DUQTOT" = "Any history of illicit drug use",
+              "DEPR_LVL" = "Depression Severity (based on PHQ-9 Score)",
+              "BMXBMI" = "BMI (kg/m²)", "CDQ009A" = "Right Arm", "CDQ009B" = "Right Chest", "CDQ009C" = "Neck", "CDQ009D" = "Upper Sternum", 
+              "CDQ009E" = "Lower Sternum", "CDQ009F" = "Left Chest", "CDQ009G" = "Left Arm", "CDQ009H" = "Epigastric", 
+              "TOT_REG" = "Total Regions of Chest Pain", 
+              "CDQ008" = "Severe chest pain lasting more than 30 minutes", "CDQ010" = "Shortness of breath on stairs/incline")
+# Rename the columns in subsetd_3 using the var_names mapping
+colnames(subsetd_3) <- ifelse(
+  colnames(subsetd_3) %in% names(var_names), 
+  var_names[colnames(subsetd_3)], 
+  colnames(subsetd_3) # Keep columns not listed in var_names unchanged
+)
 ###
 
 

@@ -5,7 +5,7 @@ library(DataExplorer) # EDA utilities
 library(psych)        # For descriptive statistics
 library(here)
 
-data <- wd_subset
+data <- subsetd_3
 
 # Load your dataset (replace 'your_data.csv' with your file path)
 data <- read.csv(here("your_data.csv"), header = TRUE)
@@ -30,18 +30,61 @@ describe(data)
 print("Count of missing values per column:")
 colSums(is.na(data))
 
-# 6. Visualize the missing data pattern (if any)
+# 6. Visualize the missing data pattern (if any) with percentages
 plot_missing <- function(data) {
   missing_data <- colSums(is.na(data))
+  total_rows <- nrow(data)
   missing_data <- missing_data[missing_data > 0]
+  
   if (length(missing_data) > 0) {
-    barplot(missing_data, main = "Missing Data Pattern", 
-            ylab = "Count of Missing Values", xlab = "Columns")
+    percentages <- round((missing_data / total_rows) * 100, 1)
+    
+    # Adjust margins to accommodate angled x-axis labels
+    par(mar = c(12, 4, 4, 2))  # Bottom, Left, Top, Right margins
+    
+    # Set ylim to ensure space above the tallest bar
+    ylim_max <- max(missing_data) * 1.2
+    bar_positions <- barplot(
+      missing_data, 
+      main = "Missing Data Pattern", 
+      ylab = "Count of Missing Values", 
+      xlab = "",  # Remove x-axis label
+      col = "skyblue", 
+      ylim = c(0, ylim_max), # Extend y-axis range
+      names.arg = rep("", length(missing_data)) # Hide default labels
+    )
+    
+    # Add angled x-axis labels
+    text(
+      x = bar_positions, 
+      y = par("usr")[3] - 0.02 * diff(par("usr")[3:4]), # Position slightly below the axis
+      labels = names(missing_data), 
+      srt = 45,  # Rotate text by 45 degrees
+      adj = 1,   # Right-align text
+      xpd = TRUE, # Allow drawing outside plot region
+      cex = 0.8  # Smaller text size
+    )
+    
+    # Overlay text showing the percentage of missing data
+    text(
+      x = bar_positions, 
+      y = missing_data, 
+      labels = paste0(percentages, "%"), 
+      pos = 3, 
+      cex = 0.8, 
+      col = "red"
+    )
   } else {
     print("No missing values found.")
   }
 }
+
+
+
+
+# Example usage:
 plot_missing(data)
+
 
 # 7. Visualize the distribution of numeric variables
 numeric_cols <- select_if(data, is.numeric)

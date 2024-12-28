@@ -99,6 +99,7 @@ print(coef_summary)
 # Load glmnet library
 library(glmnet)
 library(pROC)
+library(survey)
 
 imputation <- complete(imputations, 1)
 
@@ -110,12 +111,15 @@ design <- svydesign(
   nest = TRUE)
 
 set.seed(123)  
-rep_design <- as.svrepdesign(design, type = "bootstrap", replicates=100)
-rep_design <- subset(rep_design, !apply(
-  rep_design$variables[, c("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", "CDQ009F", "CDQ009G", "CDQ009H")],
+set_design <- as.svrepdesign(design, type = "bootstrap", replicates=100)
+rep_design <- subset(set_design, !apply(
+  set_design$variables[, c("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", "CDQ009F", "CDQ009G", "CDQ009H")],
   1, 
   function(x) all(x == 0 | is.na(x))  # Keep rows where not all values of CDQ009A-CDQ009H are 0 or NA
 ))
+
+
+
 
 # Create weights and stabilize 
 repweights <- weights(rep_design, type = "analysis")
@@ -123,42 +127,61 @@ repweights <- repweights/mean(repweights)
 pweights <- weights(rep_design, type = "sampling")
 pweights <- pweights/mean(pweights)
 
-## Variable transformation(s)
-rep_design$variables$BMXBMI <- (rep_design$variables$BMXBMI)^2
+
+data <- rep_design$variables
+data$pweights <- pweights
+data$CDQ81 <- if_else(data$CDQ008 == 1 | data$CDQ010 == 1, 1, 0)
+
 
 # Prepare the data for glmnet
 # Convert predictor variables to matrix form
-X <- model.matrix(~ DEPR_BIN + AGE_BIN + RIAGENDR + RIDRETH1 + SMQ040 + SMQ020 +
-                    HIQ011 + BPQ020 + BMI_LVL + BPQ080 + ALQ130 + MEDDEP + DMDBORNT + 
-                    PAQMV + CADTOT + DIDTOT + DUQTOT + INC_BIN
-                  + SMQ040*ALQ130*DUQTOT + PAQMV*BMI_LVL + DEPR_BIN*MEDDEP + DEPR_BIN*CADTOT
-                  , data = rep_design$variables)
+X <- model.matrix(~~ AGE_BIN + RIAGENDR + RIDRETH1 +
+                    HIQ011 + I(BMXBMI^2) + INC3 + DMDEDUC2 + 
+                    PAQMV + I(ALQ130^2) + DIDTOT + DUQTOT + SMQ040
+                  + DMDBORNT + BPQ020 + BPQ080 + SDDSRVYR + CDQ008 +
+                    DEPR_BIN*MEDDEP + DEPR_BIN*CADTOT + CDQ010,
+                  data = rep_design$variables)
+
 
 # Convert the response variable to a vector
-y <- rep_design$variables$CDQ009H
+y <- rep_design$variables$CDQ009B
 
 # Create penalty factors: lower penalty for priority_vars
-penalty_factors <- ifelse(colnames(X) == "DEPR_BIN2", 0, 1)
+priority_vars <- c("DEPR_BIN2", "DEPR_BIN2:MEDDEP1", "DEPR_BIN2:CADTOT1")
+penalty_factors <- ifelse(colnames(X) %in% priority_vars, 0, 1)
+
 
 # Define the base model using glmnet
-base_model <- cv.glmnet(X, y, family = "binomial", weights = pweights, penalty.factor = penalty_factors,
-                         alpha = 0, nfolds = 10, type.measure = "auc", standardize = TRUE)
+base_model <- cv.glmnet(X, y, family = "binomial", weights = pweights, 
+                        penalty.factor = penalty_factors,
+                         alpha = 0, nfolds = 10, type.measure = "auc"
+                        , relax=TRUE )
 
-## Find marginal effect of DEPR_BIN 
-probs <- table(rep_design$variables$MEDDEP, rep_design$variables$CADTOT) / nrow(rep_design$variables)
-marginal_effect <- coef(base_model, s="lambda.min")@x[2] + coef(base_model, s="lambda.min")@x[48]*probs["1","0"]
- + coef(base_model, s="lambda.min")@x[49]*probs["0","1"] + 
-  (coef(base_model, s="lambda.min")@x[48]+coef(base_model, s="lambda.min")@x[49])*probs["1","1"]
-print(marginal_effect)
 
-plot(base_model)
-mar = c(4.5, 4.5, 4, 1)
 
 coef(base_model, s="lambda.min")
 
 #Assess ROC-AUC
-# Predicted probabilities for the optimal lambda (lambda.min)
-pred_probs <- predict(base_model, newx = X, s = "lambda.min", type = "response")
+lambda_min <- base_model$lambda.min
+auc <- base_model$cvm[base_model$lambda == lambda_min]
+print(auc)
+plot(base_model)
+
+
+
+###
+mod <- glm(CDQ009H ~ AGE_BIN + RIAGENDR + RIDRETH1 +
+             HIQ011 + I(BMXBMI^2) + INC3 + DMDEDUC2 + 
+             PAQMV + I(ALQ130^2) + DIDTOT + DUQTOT + SMQ040*SMQ020
+           + DMDBORNT + BPQ020 + BPQ080 + SDDSRVYR +
+             DEPR_LVL*MEDDEP + DEPR_LVL*CADTOT + 
+           CDQ008 + CDQ010,
+           data = rep_design$variables, weights=pweights, family=quasibinomial(link="logit"))
+
+pred_probs <- predict(mod, type = "response")
+
+y <- rep_design$variables$CDQ009H
+
 # Compute ROC curve
 roc_curve <- roc(y, pred_probs)
 
@@ -171,8 +194,45 @@ plot(roc_curve)
 
 
 
+# Install the superml package if needed
+# install.packages("superml")
+
+library(superml)
+
+data <- rep_design$variables
+data$pweights <- pweights
+
+# Prepare your formula and data
+formula <- CDQ009B ~ AGE_BIN + RIAGENDR + RIDRETH1 + HIQ011 + BMXBMI + INC_BIN + DMDEDUC2 +
+  PAQMV + ALQ130 + DIDTOT + DUQTOT + SMQ040 + DMDBORNT + BPQ020 + BPQ080 + SDDSRVYR +
+  DEPR_LVL + MEDDEP + CADTOT
+
+# Fit logistic regression with cross-validation and weights
+cv_model_superml <- train(
+  formula = formula,
+  data = data,
+  model_type = "logistic",  # Specify logistic regression
+  kfold = 10,  # Number of cross-validation folds
+  weights = pweights,  # Include weights
+  metric = "auc"  # Optimize for AUC
+)
+
+# View results
+cv_model_superml$results
+
+###
 
 
+
+## Find marginal effect of DEPR_BIN 
+probs <- table(rep_design$variables$MEDDEP, rep_design$variables$CADTOT) / nrow(rep_design$variables)
+marginal_effect <- coef(base_model, s="lambda.min")@x[2] + coef(base_model, s="lambda.min")@x[48]*probs["1","0"]
++ coef(base_model, s="lambda.min")@x[49]*probs["0","1"] + 
+  (coef(base_model, s="lambda.min")@x[48]+coef(base_model, s="lambda.min")@x[49])*probs["1","1"]
+print(marginal_effect)
+
+plot(base_model)
+mar = c(4.5, 4.5, 4, 1)
 
 # Extract coefficients for the base model and convert them to a dense vector
 base_coef <- coef(base_model)  # Use optimal lambda
@@ -298,3 +358,94 @@ model <- brm(
   data = filtered_rep_design$variables,
   chains = 4, iter = 2000
 )
+
+
+
+
+###glmmTMB
+
+# Load glmnet library
+library(glmnet)
+library(pROC)
+library(survey)
+library(glmmTMB)
+
+
+imputation <- complete(imputations, 1)
+
+
+design <- svydesign(
+  id = ~SDMVPSU, 
+  weights = ~MEC15YR, 
+  strata = ~SDMVSTRA, 
+  data = imputation,
+  nest = TRUE)
+
+set.seed(123)  
+set_design <- as.svrepdesign(design, type = "bootstrap", replicates=100)
+rep_design <- subset(set_design, !apply(
+  set_design$variables[, c("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", "CDQ009F", "CDQ009G", "CDQ009H")],
+  1, 
+  function(x) all(x == 0 | is.na(x))  # Keep rows where not all values of CDQ009A-CDQ009H are 0 or NA
+))
+
+
+
+# Create weights and stabilize 
+repweights <- weights(rep_design, type = "analysis")
+repweights <- repweights/mean(repweights)
+pweights <- weights(rep_design, type = "sampling")
+pweights <- pweights/mean(pweights)
+
+
+# Extract data frame and add back pweights
+data <- rep_design$variables
+data$pweights <- pweights
+
+# Reshape the data to long format
+long_data <- data %>%
+  pivot_longer(cols = starts_with("CDQ009"), # Select columns CDQ009A to CDQ009H
+               names_to = "outcome_id",      # New column to hold response IDs
+               values_to = "response") %>%   # Column to hold response values
+  mutate(outcome_id = factor(outcome_id))    # Convert outcome_id to a factor
+
+
+# Define the model formula
+formula <- response ~ DEPR_BIN*MEDDEP + DEPR_BIN*CADTOT +
+  (1 | SEQN) + (1 | outcome_id)  # Random effects for subjects and outcomes
+
+# Fit the model
+model <- glmmTMB(
+  formula,
+  family = binomial(link = "logit"),  # Logistic regression
+  weights = pweights,                # Observation weights
+  data = long_data                  # Use reshaped long-format data
+)
+
+# Summary of the model
+summary(model)
+
+# Extract random effects (intercepts) for individuals (SEQN) and outcomes (outcome_id)
+random_effects <- ranef(model)
+
+# View random intercepts for individuals
+individual_random_effects <- random_effects$cond$SEQN
+
+# View random intercepts for outcomes
+outcome_random_effects <- random_effects$cond$outcome_id
+
+# Combine the random effects into a single data frame for analysis
+random_effects_df <- data.frame(individual_random_effects, outcome_random_effects)
+
+# Compute the correlation matrix between the random intercepts of outcomes
+cor_matrix <- cor(outcome_random_effects)
+
+# Print the correlation matrix between the outcomes
+print(cor_matrix)
+
+
+
+###
+
+
+

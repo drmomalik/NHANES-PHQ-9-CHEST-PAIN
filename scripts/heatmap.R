@@ -21,7 +21,12 @@ library(lwgeom)
 
 # Load the shapefile (replace with your file path)
 shapefile_path <- here("sf/body_part.shp")
-human_body_data <- st_read(shapefile_path)
+hbd <- st_read(shapefile_path)
+
+
+
+
+human_body_data <- hbd
 
 # Ensure 'value' column is numeric (if not already)
 human_body_data$value <- as.numeric(human_body_data$value)

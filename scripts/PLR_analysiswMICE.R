@@ -5,6 +5,7 @@ library(pROC)
 library(doParallel)
 library(foreach)
 library(tidyverse)
+library(survey)
 
 
 # Parallel backend setup
@@ -17,8 +18,8 @@ responses <- c("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", "CDQ009F",
 predictors <- c("DEPR_BIN", "DEPR_LVL", "AGE_BIN", "RIAGENDR", "RIDRETH1", "SMQ020",
                 "SMQ040", "HIQ011", "BPQ020", "BMXBMI", "BMI_LVL", "BPQ080",
                 "ALQ130", "MEDDEP", "DMDBORNT", "PAQMV", "CADTOT", "DIDTOT",
-                "DUQTOT", "INC_BIN")
-wd_subset <- wd[, c(responses, predictors, "SDMVPSU", "SDMVSTRA", "MEC15YR", "SEQN")]
+                "DUQTOT", "INC_BIN", "INC3", "DMDEDUC2", "CDQ008", "CDQ010")
+wd_subset <- wd[, c(responses, predictors,"SDDSRVYR", "SDMVPSU", "SDMVSTRA", "MEC15YR", "SEQN")]
 
 # Initialize the predictor matrix for MICE
 predictorMatrix <- mice::make.predictorMatrix(wd_subset)
@@ -26,7 +27,7 @@ predictorMatrix[, !colnames(predictorMatrix) %in% predictors] <- 0
 predictorMatrix[!rownames(predictorMatrix) %in% predictors, ] <- 0
 
 # Run MICE
-imputations <- mice(wd_subset, seed = 123, maxit = 5, m = 5, predictorMatrix = predictorMatrix, printFlag = TRUE)
+imputations <- mice(wd_subset, seed = 123, maxit = 1, m = 1, predictorMatrix = predictorMatrix, printFlag = TRUE)
 
 # Parallelized analysis for each imputed dataset
 all_results <- foreach(imp_id = 1:imputations$m, .packages = c("glmnet", "survey")) %dopar% {
@@ -42,7 +43,7 @@ all_results <- foreach(imp_id = 1:imputations$m, .packages = c("glmnet", "survey
     nest = TRUE
   )
   set.seed(123)
-  rep_design <- as.svrepdesign(design, type = "bootstrap", replicates = 100)
+  rep_design <- as.svrepdesign(design, type = "bootstrap", replicates = 500)
   rep_design <- subset(rep_design, !apply(
     rep_design$variables[, responses], 1,
     function(x) all(x == 0 | is.na(x))
@@ -69,7 +70,11 @@ all_results <- foreach(imp_id = 1:imputations$m, .packages = c("glmnet", "survey
   
   for (response in responses) {
     y <- rep_design$variables[[response]]
-    penalty_factors <- ifelse(colnames(X) == "DEPR_BIN2", 0, 1)
+    
+    # Create penalty factors: lower penalty for priority_vars
+    priority_vars <- c("DEPR_BIN2", "DEPR_BIN2:MEDDEP1", "DEPR_BIN2:CADTOT1")
+    penalty_factors <- ifelse(colnames(X) %in% priority_vars, 0, 1)
+    
     base_model <- cv.glmnet(
       X, y, family = "binomial", weights = pweights, penalty.factor = penalty_factors,
       alpha = 0, nfolds = 10, type.measure = "auc", standardize = TRUE

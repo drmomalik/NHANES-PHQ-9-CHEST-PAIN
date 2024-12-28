@@ -21,7 +21,7 @@ predictorMatrix[, !colnames(predictorMatrix) %in% predictors] <- 0
 predictorMatrix[!rownames(predictorMatrix) %in% predictors, ] <- 0
 
 # Run mice with the custom predictor matrix
-imputations <- mice(wd_subset, seed = 123, maxit = 1, m = 1, predictorMatrix = predictorMatrix,
+imputations <- mice(wd_subset, seed = 123, maxit = 5, m = 5, predictorMatrix = predictorMatrix,
                     printFlag = TRUE)
 
 

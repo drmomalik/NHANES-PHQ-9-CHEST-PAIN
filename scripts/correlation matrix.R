@@ -103,7 +103,7 @@ sub_design <- svydesign(id = ~SDMVPSU, weights = ~MEC15YR,
 
 # Subset the survey design based on conditions
 sub_design <- subset(sub_design, !apply(
-  imputation.svy$variables[, c("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", "CDQ009F", "CDQ009G", "CDQ009H")],
+  sub_design$variables[, c("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", "CDQ009F", "CDQ009G", "CDQ009H")],
   1, 
   function(x) all(x == 0 | is.na(x))  # Keep rows where not all values of CDQ009A-CDQ009H are 0 or NA
 ))
@@ -113,7 +113,7 @@ des_1 <- subset(sub_design, DEPR_TOT < 15)
 des_2 <- subset(sub_design, DEPR_TOT >= 15)
 
 # List of designs to loop over
-designs <- list("Group 1 (DEPR_TOT < 15)" = des_1, "Group 2 (DEPR_TOT >= 15)" = des_2)
+designs <- list("PHQ-9 Score < 15" = des_1, "PHQ-9 Score ≥ 15" = des_2)
 
 # Desired labels for the correlation matrix
 labels <- c(
@@ -159,11 +159,10 @@ for (level in names(designs)) {
   # Add the title manually
   title(
     main = paste("Correlation Matrix -", level),  # Add group-specific title
-    line = -2,  # Moves the title closer to the plot (negative values bring it closer)
-    cex.main = 1.2 # Adjust title font size if needed
+    line = 2.5,  # Moves the title closer to the plot (negative values bring it closer)
+    cex.main = 1.1 # Adjust title font size if needed
   )
 }
-
 
 
 ### correlation b/w DEPR_TOT and TOT_REG
