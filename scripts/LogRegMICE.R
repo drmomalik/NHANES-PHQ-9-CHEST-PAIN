@@ -3,8 +3,8 @@ library(mice)
 library(howManyImputations)
 
 responses <- c("CDQ009A", "CDQ009B", "CDQ009C", "CDQ009D", "CDQ009E", "CDQ009F", "CDQ009G", "CDQ009H")
-predictors <- c("DEPR_LVL", "AGE_BIN", "RIAGENDR", "RIDRETH1", 
-                "SMQ020", "SMQ040", "HIQ011", "BPQ020", "BMXBMI", "BPQ080",
+predictors <- c("DEPR_BIN", "DEPR_LVL", "AGE_BIN", "RIAGENDR", "RIDRETH1", "SMQ020",
+                "SMQ040", "HIQ011", "BPQ020", "BMXBMI", "BMI_LVL", "BPQ080",
                 "ALQ130", "MEDDEP", "DMDBORNT", "PAQMV", "CADTOT", "DIDTOT",
                 "DUQTOT", "INC_BIN")
 
@@ -21,7 +21,7 @@ predictorMatrix[, !colnames(predictorMatrix) %in% predictors] <- 0
 predictorMatrix[!rownames(predictorMatrix) %in% predictors, ] <- 0
 
 # Run mice with the custom predictor matrix
-imputations <- mice(wd_subset, seed = 123, maxit = 1, m = 1, predictorMatrix = predictorMatrix,
+imputations <- mice(wd_subset, seed = 123, maxit = 5, m = 5, predictorMatrix = predictorMatrix,
                     printFlag = TRUE)
 
 
@@ -68,7 +68,7 @@ lm_svy_mi <- function(formula, imputations) {
   #now pool the results
   b.pool <- apply(b, 1, mean)
   or <- exp(b.pool)
-  between.var <- apply(b, 1, var)
+  between.var <- apply(b, 1, function(x) var(x))
   within.var <- apply(se^2, 1, mean)
   se.pool <- sqrt(within.var+between.var+between.var/imputations$m) 
   t.pool <- b.pool/se.pool 
@@ -76,12 +76,6 @@ lm_svy_mi <- function(formula, imputations) {
   coefficients <- data.frame(b.pool, se.pool, t.pool, pvalue.pool)
   lci <- exp(b.pool-1.96*se.pool)
   uci <- exp(b.pool+1.96*se.pool)
-  
-
-  #we can also grap n and p from the last model since 
-  #they should be the same across all iterations
-  n <- nobs(model)
-  p <- length(model$coefficients)-1
   
   
   #return everything in a list
